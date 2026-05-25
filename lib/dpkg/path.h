@@ -46,6 +46,7 @@ int secure_unlink_statted(const char *pathname, const struct stat *stab);
 int secure_unlink(const char *pathname);
 int secure_remove(const char *pathname);
 
+int path_rename(const char *oldpath, const char *newpath);
 void path_remove_tree(const char *pathname);
 
 /** @} */

@@ -112,6 +112,50 @@ secure_remove(const char *pathname)
 }
 
 /**
+ * Rename a pathname, falling back to move on EXDEV.
+ *
+ * When rename(2) fails with EXDEV (cross-device link), which commonly
+ * happens on OverlayFS where source and destination reside on different
+ * layers, this function falls back to using mv(1) which handles
+ * cross-filesystem moves automatically.
+ *
+ * @param oldpath  Source pathname.
+ * @param newpath  Destination pathname.
+ *
+ * @retval 0 On success.
+ * @retval -1 On failure, errno is set.
+ */
+int
+path_rename(const char *oldpath, const char *newpath)
+{
+	if (rename(oldpath, newpath) == 0)
+		return 0;
+
+	if (errno != EXDEV)
+		return -1;
+
+	/* EXDEV: fall back to mv which handles cross-filesystem moves. */
+	debug(_("unable to rename '%.255s' to '%.255s' across filesystems, "
+	          "falling back to mv"), oldpath, newpath);
+
+	pid_t pid = subproc_fork();
+	if (pid == 0) {
+		execlp(MV, "mv", "-f", "--", oldpath, newpath, NULL);
+		ohshite(_("unable to execute %s (%s)"),
+		        _("mv command for cross-filesystem rename"), MV);
+	}
+	debug(dbg_eachfile, "%s running mv '%s' '%s' (EXDEV fallback)",
+	      __func__, oldpath, newpath);
+	if (subproc_reap(pid, _("mv command for cross-filesystem rename"),
+	                 SUBPROC_RETERROR)) {
+		errno = EIO;
+		return -1;
+	}
+
+	return 0;
+}
+
+/**
  * Remove a pathname and anything below it.
  *
  * This function removes pathname and all its contents recursively.
